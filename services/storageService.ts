@@ -11,15 +11,16 @@ const STORAGE_KEYS = {
   ORDERS: 'beanbank_orders'
 };
 
-// Unique App Scope - Version bumped to ensure clean sync channels
-const APP_SCOPE = 'choir_beanbank_live_v4'; 
+// Unique App Scope - Bumped to ensure fresh mesh network channel
+const APP_SCOPE = 'choir_beanbank_mesh_v1'; 
 
-// List of public Gun relay peers to ensure high availability
+// Robust list of public Gun relay peers
 const PEERS = [
     'https://gun-manhattan.herokuapp.com/gun',
     'https://peer.wallie.io/gun',
     'https://gun-eu.herokuapp.com/gun',
-    'https://gun-us.herokuapp.com/gun'
+    'https://gun-us.herokuapp.com/gun',
+    'https://plankton-app-6qfp3.ondigitalocean.app/gun'
 ];
 
 // Initialize Gun with safe fallbacks
@@ -32,7 +33,6 @@ try {
     // Initialize Gun instance
     if (typeof Gun === 'function') {
         console.log("Connecting to BeanBank Network via:", PEERS);
-        // We disable Gun's internal localStorage (localStorage: false) because 
         // we manually manage persistence to ensure React state stays in sync.
         gun = Gun({ peers: PEERS, localStorage: false });
     } else {
@@ -93,11 +93,8 @@ const persist = (key: string, data: any) => {
     
     // 3. Update Network (Gun.js)
     try {
-        // We store the entire JSON blob for simplicity in this specific app architecture.
-        // In a production app with high concurrency, we would use Gun's graph features directly.
         gun.get(APP_SCOPE).get(key).put(jsonStr);
     } catch (e) {
-        // Ignore sync errors in offline mode
         console.warn("Sync failed for", key);
     }
     
@@ -156,14 +153,12 @@ const init = () => {
     Object.keys(state).forEach(key => {
         try {
             gun.get(APP_SCOPE).get(key).on((data: any) => {
-                // Gun might return the string or the object depending on how it was PUT and how internal parsing works.
-                // Since we consistently PUT strings, we expect strings.
                 if (typeof data === 'string') {
                     try {
-                        // Prevent infinite loops: only update if data is different from what we have locally
+                        // Prevent infinite loops: only update if data is different
                         const currentLocal = localStorage.getItem(key);
                         if (data !== currentLocal) {
-                            console.log(`Received update for ${key} from network`);
+                            console.log(`[Mesh] Received update for ${key}`);
                             const parsed = JSON.parse(data);
                             state[key] = parsed;
                             localStorage.setItem(key, data);
@@ -184,7 +179,6 @@ const init = () => {
 init();
 
 export const StorageService = {
-  // Allow App to subscribe to changes
   subscribe: (callback: () => void) => {
       subscribers.add(callback);
       return () => subscribers.delete(callback);
@@ -195,13 +189,16 @@ export const StorageService = {
     console.log("Forcing network resync...");
     Object.keys(state).forEach(key => {
         try {
+            // Use .once() to strictly fetch the latest node value from the graph
             gun.get(APP_SCOPE).get(key).once((data: any) => {
                 if (typeof data === 'string') {
                     try {
-                        const parsed = JSON.parse(data);
-                        state[key] = parsed;
-                        localStorage.setItem(key, data);
-                        console.log(`Resynced ${key}`);
+                        const currentLocal = localStorage.getItem(key);
+                        if (data !== currentLocal) {
+                            console.log(`[Resync] Updated ${key} from mesh`);
+                            state[key] = JSON.parse(data);
+                            localStorage.setItem(key, data);
+                        }
                     } catch(e) { 
                         console.warn(`Resync parse error ${key}`); 
                     }
@@ -211,23 +208,20 @@ export const StorageService = {
             console.warn("Gun unreachable during resync");
         }
     });
-    notify();
+    // Trigger UI update regardless of data change to show "done" state
+    setTimeout(notify, 500); 
   },
 
   getUsers: (): User[] => state[STORAGE_KEYS.USERS],
-
   saveUsers: (users: User[]) => persist(STORAGE_KEYS.USERS, users),
 
   getTransactions: (): Transaction[] => state[STORAGE_KEYS.TRANSACTIONS],
-
   saveTransactions: (txs: Transaction[]) => persist(STORAGE_KEYS.TRANSACTIONS, txs),
 
   getBets: (): Bet[] => state[STORAGE_KEYS.BETS],
-
   saveBets: (bets: Bet[]) => persist(STORAGE_KEYS.BETS, bets),
 
   getDares: (): Dare[] => state[STORAGE_KEYS.DARES],
-
   saveDares: (dares: Dare[]) => persist(STORAGE_KEYS.DARES, dares),
 
   createDare: (creatorId: string, targetId: string, description: string) => {
@@ -437,8 +431,6 @@ export const StorageService = {
             category: 'Investment'
         };
         const allTxs = StorageService.getTransactions();
-        // Note: we don't use saveTransactions here to avoid double-persisting in the loop
-        // We will save all at end
         allTxs.unshift(tx);
         state[STORAGE_KEYS.TRANSACTIONS] = allTxs; 
     }
