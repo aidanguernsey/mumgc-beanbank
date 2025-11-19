@@ -1,8 +1,11 @@
 import { User, Transaction, Bet, MarketPoint, Order, OrderSide, OrderType, Dare } from '../types';
 
 const SESSION_KEY = 'beanbank_current_user_id';
+const URL_KEY = 'beanbank_api_url';
 const POLLING_INTERVAL_MS = 2000;
-const API_BASE_URL = 'http://localhost:3000'; // Explicitly point to the backend server
+
+// Default to localhost, but allow override
+let API_BASE_URL = localStorage.getItem(URL_KEY) || 'http://localhost:3000';
 
 // --- CLIENT SIDE STATE CACHE ---
 let cache = {
@@ -18,6 +21,18 @@ const subscribers = new Set<() => void>();
 const notify = () => subscribers.forEach(cb => cb());
 
 export const StorageService = {
+  // --- CONFIGURATION ---
+  getApiUrl: () => API_BASE_URL,
+  
+  setApiUrl: (url: string) => {
+      // Remove trailing slash if present to ensure consistency
+      const cleanUrl = url.replace(/\/$/, "");
+      API_BASE_URL = cleanUrl;
+      localStorage.setItem(URL_KEY, cleanUrl);
+      // Trigger an immediate resync attempt
+      StorageService.resync();
+  },
+
   // --- SUBSCRIPTION & SYNC ---
   subscribe: (callback: () => void) => {
     subscribers.add(callback);
@@ -34,7 +49,6 @@ export const StorageService = {
   // Fetch latest state from Server
   resync: async (): Promise<boolean> => {
       try {
-          // Using full URL to avoid port mismatch issues in local dev
           const res = await fetch(`${API_BASE_URL}/api/state`);
           if (res.ok) {
               const data = await res.json();
@@ -44,7 +58,7 @@ export const StorageService = {
           }
           return false;
       } catch (e) {
-          console.warn("BeanBank Server not reachable. Ensure 'node server.js' is running on port 3000.");
+          console.warn(`BeanBank Server not reachable at ${API_BASE_URL}`);
           return false;
       }
   },

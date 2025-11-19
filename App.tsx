@@ -37,7 +37,8 @@ import {
   RefreshCcw,
   Smartphone,
   Server,
-  Wifi
+  Wifi,
+  Settings
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -135,6 +136,8 @@ const App: React.FC = () => {
   // Login State
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [serverUrl, setServerUrl] = useState(StorageService.getApiUrl());
 
   // BeanCoin & Exchange State
   const [marketHistory, setMarketHistory] = useState<MarketPoint[]>([]);
@@ -279,6 +282,13 @@ const App: React.FC = () => {
   }, [marketHistory, timeFrame]);
 
   // -- Handlers --
+
+  const handleSaveSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    StorageService.setApiUrl(serverUrl);
+    setShowSettings(false);
+    handleForceSync();
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -617,8 +627,45 @@ const App: React.FC = () => {
 
   if (!currentUser) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 border border-slate-200">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4 relative">
+        {/* Settings Modal */}
+        {showSettings && (
+            <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-20 flex items-center justify-center p-6">
+                <div className="max-w-sm w-full bg-white shadow-2xl rounded-xl border border-slate-200 p-6">
+                    <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                        <Settings size={20} /> Server Settings
+                    </h3>
+                    <form onSubmit={handleSaveSettings}>
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Server URL</label>
+                            <input 
+                                type="text" 
+                                className="w-full p-2 border border-slate-300 rounded font-mono text-sm"
+                                placeholder="http://localhost:3000"
+                                value={serverUrl}
+                                onChange={e => setServerUrl(e.target.value)}
+                            />
+                            <p className="text-xs text-slate-500 mt-2">
+                                If running locally: <code>http://localhost:3000</code><br/>
+                                If on Replit/Cloud: Enter the webview URL.
+                            </p>
+                        </div>
+                        <div className="flex gap-3">
+                            <Button type="button" variant="ghost" className="flex-1" onClick={() => setShowSettings(false)}>Cancel</Button>
+                            <Button type="submit" className="flex-1">Save & Connect</Button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        )}
+
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 border border-slate-200 relative z-10">
+          <div className="absolute top-4 right-4">
+              <button onClick={() => setShowSettings(true)} className="p-2 text-slate-300 hover:text-slate-600 transition-colors rounded-full hover:bg-slate-100">
+                  <Settings size={20} />
+              </button>
+          </div>
+          
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 mb-4">
               <Wallet size={32} />
@@ -633,9 +680,10 @@ const App: React.FC = () => {
                ) : isConnected ? (
                    <span className="text-emerald-600 flex items-center gap-2"><Server size={14}/> Server Connected</span>
                ) : (
-                   <div className="text-rose-500 bg-rose-50 p-2 rounded text-xs flex flex-col items-center">
-                       <span className="flex items-center gap-2 font-bold"><Wifi size={14}/> Server Unreachable</span>
-                       <span className="mt-1">Please run "node server.js" on port 3000.</span>
+                   <div className="text-rose-500 bg-rose-50 p-2 rounded text-xs flex flex-col items-center w-full">
+                       <span className="flex items-center gap-2 font-bold mb-1"><Wifi size={14}/> Server Unreachable</span>
+                       <span className="text-center mb-2">Check if <code>node server.js</code> is running.</span>
+                       <button onClick={() => setShowSettings(true)} className="text-rose-700 underline hover:text-rose-900">Configure URL</button>
                    </div>
                )}
             </div>
