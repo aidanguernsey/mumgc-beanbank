@@ -1,0 +1,5 @@
+{
+  "name": "Choir BeanBank",
+  "description": "A social currency tracker for choirs. Manage beans, place bets, and consult the AI Bean Oracle.",
+  "requestFramePermissions": []
+}
