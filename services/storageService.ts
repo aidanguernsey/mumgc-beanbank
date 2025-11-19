@@ -1,53 +1,172 @@
 
 import { User, Transaction, Bet, MarketPoint, Order, OrderSide, OrderType, Dare } from '../types';
-import { db } from './database';
-import { backend } from './backend';
 
 const SESSION_KEY = 'beanbank_current_user_id';
+const POLLING_INTERVAL_MS = 2000;
 
-// --- FRONTEND API SERVICE ---
-// This service connects the React UI to the 'Backend' logic and 'Database' state.
+// --- CLIENT SIDE STATE CACHE ---
+// The frontend reads from this cache synchronously for rendering.
+// The polling mechanism updates this cache from the server asynchronously.
+let cache = {
+    users: [] as User[],
+    transactions: [] as Transaction[],
+    bets: [] as Bet[],
+    dares: [] as Dare[],
+    orders: [] as Order[],
+    marketHistory: [] as MarketPoint[]
+};
+
+const subscribers = new Set<() => void>();
+const notify = () => subscribers.forEach(cb => cb());
 
 export const StorageService = {
-  // 1. Subscription Wrapper
-  subscribe: db.subscribe,
-  resync: db.resync,
+  // --- SUBSCRIPTION & SYNC ---
+  subscribe: (callback: () => void) => {
+    subscribers.add(callback);
+    // Start polling
+    const interval = setInterval(() => {
+        StorageService.resync();
+    }, POLLING_INTERVAL_MS);
 
-  // 2. Data Accessors (Read Only)
-  getUsers: db.users.get,
-  getTransactions: db.transactions.get,
-  getBets: db.bets.get,
-  getDares: db.dares.get,
-  getOrders: db.orders.get,
-  getMarketHistory: db.marketHistory.get,
+    return () => {
+        subscribers.delete(callback);
+        clearInterval(interval);
+    };
+  },
 
-  // 3. User Session Management (Frontend Only)
+  // Fetch latest state from Server
+  resync: async () => {
+      try {
+          const res = await fetch('/api/state');
+          if (res.ok) {
+              const data = await res.json();
+              cache = data;
+              notify();
+          }
+      } catch (e) {
+          console.error("Sync failed:", e);
+      }
+  },
+
+  // --- READ ACCESSORS (Sync) ---
+  getUsers: () => cache.users,
+  getTransactions: () => cache.transactions,
+  getBets: () => cache.bets,
+  getDares: () => cache.dares,
+  getOrders: () => cache.orders,
+  getMarketHistory: () => cache.marketHistory,
+
+  // --- USER SESSION ---
   getCurrentUserId: (): string | null => localStorage.getItem(SESSION_KEY),
   setCurrentUserId: (id: string) => localStorage.setItem(SESSION_KEY, id),
   logout: () => localStorage.removeItem(SESSION_KEY),
 
-  // 4. Actions (Call Backend Logic)
+  // --- ACTIONS (Async Server Calls) ---
   
-  // User Admin
-  saveUsers: (users: User[]) => db.users.set(users),
-
-  // Transactions
-  processTransaction: (fromId: string, toId: string, amount: number, description: string) => {
-      return backend.processTransaction(fromId, toId, amount, description);
+  saveUsers: async (users: User[]) => {
+      await fetch('/api/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(users)
+      });
+      StorageService.resync();
   },
-  
+
+  processTransaction: async (fromId: string, toId: string, amount: number, description: string) => {
+      const res = await fetch('/api/transaction', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fromId, toId, amount, description })
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message);
+      StorageService.resync();
+      return data.transaction;
+  },
+
   // Bets
-  saveBets: (bets: Bet[]) => db.bets.set(bets), // Admin overrides
-  createBet: backend.createBet, // Future method to clean up component
-  resolveBet: backend.resolveBet,
-  
+  saveBets: async (bets: Bet[]) => {
+      // Admin override - simplistic for this demo, usually we'd have specific endpoints
+      // We'll just assume state sync handles it or specific endpoints are used
+      // For now, this is a no-op in the server arch unless we add a bulk endpoint
+      console.warn("Bulk save not supported in Server mode");
+  }, 
+
+  createBet: async (bet: Bet) => {
+      await fetch('/api/bets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bet)
+      });
+      StorageService.resync();
+  },
+
+  resolveBet: async (betId: string, winningOptionId: string) => {
+      await fetch('/api/bets/resolve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ betId, winningOptionId })
+      });
+      StorageService.resync();
+  },
+
   // Dares
-  createDare: backend.createDare,
-  pledgeToDare: backend.pledgeToDare,
-  resolveDare: backend.resolveDare,
-  saveDares: (dares: Dare[]) => db.dares.set(dares), // Admin overrides
+  createDare: async (creatorId: string, targetId: string, description: string) => {
+      await fetch('/api/dares', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ creatorId, targetId, description })
+      });
+      StorageService.resync();
+  },
+
+  pledgeToDare: async (userId: string, dareId: string, amount: number) => {
+      const res = await fetch('/api/dares/pledge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, dareId, amount })
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message);
+      StorageService.resync();
+  },
+
+  resolveDare: async (dareId: string, proof?: string) => {
+      await fetch('/api/dares/resolve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dareId, proof })
+      });
+      StorageService.resync();
+  },
+  saveDares: (dares: Dare[]) => { /* No-op in server mode */ },
 
   // Market
-  processOrder: backend.processOrder,
-  cancelOrder: backend.cancelOrder,
+  processOrder: async (userId: string, side: OrderSide, type: OrderType, amount: number, price: number) => {
+      const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, side, type, amount, price })
+      });
+      const data = await res.json();
+      StorageService.resync();
+      return data;
+  },
+
+  cancelOrder: async (orderId: string) => {
+      await fetch(`/api/orders/${orderId}`, { method: 'DELETE' });
+      StorageService.resync();
+  },
+  
+  // Custom wager method needed for the new architecture
+  placeWager: async (userId: string, betId: string, optionId: string, amount: number) => {
+      const res = await fetch('/api/bets/wager', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, betId, optionId, amount })
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message);
+      StorageService.resync();
+  }
 };
