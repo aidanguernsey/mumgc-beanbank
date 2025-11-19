@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { User, Transaction, Bet, AppView, ChatMessage, BetWager, MarketPoint, Order, OrderType, OrderSide, Dare } from './types';
 import { StorageService } from './services/storageService';
@@ -36,7 +35,9 @@ import {
   Share2,
   Link as LinkIcon,
   RefreshCcw,
-  Smartphone
+  Smartphone,
+  Server,
+  Wifi
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -200,22 +201,33 @@ const App: React.FC = () => {
   
   // Deployment State
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [connectionAttempted, setConnectionAttempted] = useState(false);
 
   // Load Data
   useEffect(() => {
-    // Initial Fetch
-    StorageService.resync().then(() => {
-         refreshData();
-         const curUserId = StorageService.getCurrentUserId();
-         if (curUserId) {
-            const loadedUsers = StorageService.getUsers();
-            const found = loadedUsers.find(u => u.id === curUserId);
-            if (found) setCurrentUser(found);
-         }
-    });
+    const init = async () => {
+        setConnectionAttempted(false);
+        const success = await StorageService.resync();
+        setConnectionAttempted(true);
+        setIsConnected(success);
+        
+        if (success) {
+            refreshData();
+            const curUserId = StorageService.getCurrentUserId();
+            if (curUserId) {
+                const loadedUsers = StorageService.getUsers();
+                const found = loadedUsers.find(u => u.id === curUserId);
+                if (found) setCurrentUser(found);
+            }
+        }
+    };
+
+    init();
 
     // Subscribe to polling updates
     const unsubscribe = StorageService.subscribe(() => {
+        setIsConnected(true);
         refreshData();
     });
     
@@ -270,12 +282,17 @@ const App: React.FC = () => {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    if (users.length === 0) {
+        alert("Cannot login: No users loaded from server. Is the server running?");
+        return;
+    }
+
     // Simple login: Match username
     const loadedUsers = StorageService.getUsers();
     let user = loadedUsers.find(u => u.username.toLowerCase() === loginUsername.toLowerCase());
     
     if (!user) {
-        alert("User not found. (Wait for sync if just started)");
+        alert("User not found.");
         return;
     }
 
@@ -300,7 +317,8 @@ const App: React.FC = () => {
 
   const handleForceSync = async () => {
       setIsSyncing(true);
-      await StorageService.resync();
+      const success = await StorageService.resync();
+      setIsConnected(success);
       setTimeout(() => {
           setIsSyncing(false);
           refreshData();
@@ -607,6 +625,20 @@ const App: React.FC = () => {
             </div>
             <h1 className="text-3xl font-bold text-slate-900">Choir BeanBank</h1>
             <p className="text-slate-500 mt-2">Manage your social currency securely.</p>
+            
+            {/* Connection Status Indicator */}
+            <div className="mt-4 flex items-center justify-center gap-2 text-sm">
+               {!connectionAttempted ? (
+                   <span className="text-slate-400 flex items-center gap-2"><RefreshCw size={14} className="animate-spin"/> Connecting to server...</span>
+               ) : isConnected ? (
+                   <span className="text-emerald-600 flex items-center gap-2"><Server size={14}/> Server Connected</span>
+               ) : (
+                   <div className="text-rose-500 bg-rose-50 p-2 rounded text-xs flex flex-col items-center">
+                       <span className="flex items-center gap-2 font-bold"><Wifi size={14}/> Server Unreachable</span>
+                       <span className="mt-1">Please run "node server.js" on port 3000.</span>
+                   </div>
+               )}
+            </div>
           </div>
           
           <form onSubmit={handleLogin} className="space-y-4">
@@ -616,9 +648,10 @@ const App: React.FC = () => {
                 type="text"
                 value={loginUsername}
                 onChange={e => setLoginUsername(e.target.value)}
-                className="w-full px-4 py-2 border border-slate-600 bg-slate-700 text-white rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none placeholder-slate-400"
+                className="w-full px-4 py-2 border border-slate-600 bg-slate-700 text-white rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none placeholder-slate-400 disabled:opacity-50"
                 placeholder="e.g., Choir_Manager"
                 required
+                disabled={!isConnected}
               />
             </div>
             <div>
@@ -627,12 +660,15 @@ const App: React.FC = () => {
                 type="password"
                 value={loginPassword}
                 onChange={e => setLoginPassword(e.target.value)}
-                className="w-full px-4 py-2 border border-slate-600 bg-slate-700 text-white rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none placeholder-slate-400"
+                className="w-full px-4 py-2 border border-slate-600 bg-slate-700 text-white rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none placeholder-slate-400 disabled:opacity-50"
                 placeholder="••••••••"
                 required
+                disabled={!isConnected}
               />
             </div>
-            <Button type="submit" className="w-full justify-center">Sign In</Button>
+            <Button type="submit" className="w-full justify-center" disabled={!isConnected}>
+                {isConnected ? 'Sign In' : 'Waiting for Server...'}
+            </Button>
           </form>
           <div className="mt-6 text-xs text-slate-400 text-center">
             Try "Choir_Manager" (pass: admin) or "Maestro_John" (pass: 123)
@@ -1694,11 +1730,11 @@ const App: React.FC = () => {
             <div className="px-4 mb-4 flex items-center justify-between">
                  <div className="flex items-center gap-2 text-emerald-500 text-xs font-bold" title="Synced with Server">
                     <div className="relative flex h-3 w-3">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                        <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isConnected ? 'bg-emerald-400' : 'bg-rose-400'}`}></span>
+                        <span className={`relative inline-flex rounded-full h-3 w-3 ${isConnected ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
                     </div>
                     <span className="hidden md:block flex items-center gap-1">
-                        LIVE SYNC <Globe size={10} />
+                        {isConnected ? 'LIVE SYNC' : 'OFFLINE'} <Globe size={10} />
                     </span>
                 </div>
                 <button 

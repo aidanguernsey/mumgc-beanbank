@@ -1,4 +1,3 @@
-
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -63,6 +62,11 @@ function processTransactionLogic(fromId, toId, amount, description, category) {
 }
 
 // --- API ROUTES ---
+
+// 0. Root / Health Check
+app.get('/', (req, res) => {
+    res.send('BeanBank Server is Running. Access API at /api/state');
+});
 
 // 1. Get Full State (Client Polling)
 app.get('/api/state', (req, res) => {
@@ -313,10 +317,7 @@ app.delete('/api/orders/:id', (req, res) => {
     res.json({ success: true });
 });
 
-// Serve Frontend (if built)
-// app.use(express.static('dist')); 
-
 app.listen(PORT, () => {
     console.log(`BeanBank Server running on port ${PORT}`);
-    console.log(`Environment: Server-Client Architecture`);
+    console.log(`Access API at http://localhost:${PORT}/api/state`);
 });

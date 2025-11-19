@@ -1,12 +1,10 @@
-
 import { User, Transaction, Bet, MarketPoint, Order, OrderSide, OrderType, Dare } from '../types';
 
 const SESSION_KEY = 'beanbank_current_user_id';
 const POLLING_INTERVAL_MS = 2000;
+const API_BASE_URL = 'http://localhost:3000'; // Explicitly point to the backend server
 
 // --- CLIENT SIDE STATE CACHE ---
-// The frontend reads from this cache synchronously for rendering.
-// The polling mechanism updates this cache from the server asynchronously.
 let cache = {
     users: [] as User[],
     transactions: [] as Transaction[],
@@ -23,7 +21,6 @@ export const StorageService = {
   // --- SUBSCRIPTION & SYNC ---
   subscribe: (callback: () => void) => {
     subscribers.add(callback);
-    // Start polling
     const interval = setInterval(() => {
         StorageService.resync();
     }, POLLING_INTERVAL_MS);
@@ -35,16 +32,20 @@ export const StorageService = {
   },
 
   // Fetch latest state from Server
-  resync: async () => {
+  resync: async (): Promise<boolean> => {
       try {
-          const res = await fetch('/api/state');
+          // Using full URL to avoid port mismatch issues in local dev
+          const res = await fetch(`${API_BASE_URL}/api/state`);
           if (res.ok) {
               const data = await res.json();
               cache = data;
               notify();
+              return true;
           }
+          return false;
       } catch (e) {
-          console.error("Sync failed:", e);
+          console.warn("BeanBank Server not reachable. Ensure 'node server.js' is running on port 3000.");
+          return false;
       }
   },
 
@@ -64,7 +65,7 @@ export const StorageService = {
   // --- ACTIONS (Async Server Calls) ---
   
   saveUsers: async (users: User[]) => {
-      await fetch('/api/users', {
+      await fetch(`${API_BASE_URL}/api/users`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(users)
@@ -73,7 +74,7 @@ export const StorageService = {
   },
 
   processTransaction: async (fromId: string, toId: string, amount: number, description: string) => {
-      const res = await fetch('/api/transaction', {
+      const res = await fetch(`${API_BASE_URL}/api/transaction`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ fromId, toId, amount, description })
@@ -84,16 +85,12 @@ export const StorageService = {
       return data.transaction;
   },
 
-  // Bets
   saveBets: async (bets: Bet[]) => {
-      // Admin override - simplistic for this demo, usually we'd have specific endpoints
-      // We'll just assume state sync handles it or specific endpoints are used
-      // For now, this is a no-op in the server arch unless we add a bulk endpoint
       console.warn("Bulk save not supported in Server mode");
   }, 
 
   createBet: async (bet: Bet) => {
-      await fetch('/api/bets', {
+      await fetch(`${API_BASE_URL}/api/bets`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(bet)
@@ -102,7 +99,7 @@ export const StorageService = {
   },
 
   resolveBet: async (betId: string, winningOptionId: string) => {
-      await fetch('/api/bets/resolve', {
+      await fetch(`${API_BASE_URL}/api/bets/resolve`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ betId, winningOptionId })
@@ -110,9 +107,8 @@ export const StorageService = {
       StorageService.resync();
   },
 
-  // Dares
   createDare: async (creatorId: string, targetId: string, description: string) => {
-      await fetch('/api/dares', {
+      await fetch(`${API_BASE_URL}/api/dares`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ creatorId, targetId, description })
@@ -121,7 +117,7 @@ export const StorageService = {
   },
 
   pledgeToDare: async (userId: string, dareId: string, amount: number) => {
-      const res = await fetch('/api/dares/pledge', {
+      const res = await fetch(`${API_BASE_URL}/api/dares/pledge`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, dareId, amount })
@@ -132,7 +128,7 @@ export const StorageService = {
   },
 
   resolveDare: async (dareId: string, proof?: string) => {
-      await fetch('/api/dares/resolve', {
+      await fetch(`${API_BASE_URL}/api/dares/resolve`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ dareId, proof })
@@ -141,9 +137,8 @@ export const StorageService = {
   },
   saveDares: (dares: Dare[]) => { /* No-op in server mode */ },
 
-  // Market
   processOrder: async (userId: string, side: OrderSide, type: OrderType, amount: number, price: number) => {
-      const res = await fetch('/api/orders', {
+      const res = await fetch(`${API_BASE_URL}/api/orders`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, side, type, amount, price })
@@ -154,13 +149,12 @@ export const StorageService = {
   },
 
   cancelOrder: async (orderId: string) => {
-      await fetch(`/api/orders/${orderId}`, { method: 'DELETE' });
+      await fetch(`${API_BASE_URL}/api/orders/${orderId}`, { method: 'DELETE' });
       StorageService.resync();
   },
   
-  // Custom wager method needed for the new architecture
   placeWager: async (userId: string, betId: string, optionId: string, amount: number) => {
-      const res = await fetch('/api/bets/wager', {
+      const res = await fetch(`${API_BASE_URL}/api/bets/wager`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId, betId, optionId, amount })
