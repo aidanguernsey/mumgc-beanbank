@@ -290,6 +290,14 @@ const App: React.FC = () => {
     handleForceSync();
   };
 
+  const handleResetSettings = () => {
+      const emptyUrl = "";
+      setServerUrl(emptyUrl);
+      StorageService.setApiUrl(emptyUrl);
+      setShowSettings(false);
+      handleForceSync();
+  };
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (users.length === 0) {
@@ -640,14 +648,22 @@ const App: React.FC = () => {
                             <label className="block text-sm font-medium text-slate-700 mb-1">Server URL</label>
                             <input 
                                 type="text" 
-                                className="w-full p-2 border border-slate-300 rounded font-mono text-sm"
+                                className="w-full p-2 border border-slate-300 rounded font-mono text-sm mb-2"
                                 placeholder="http://localhost:3000"
                                 value={serverUrl}
                                 onChange={e => setServerUrl(e.target.value)}
                             />
+                            <Button 
+                                type="button" 
+                                variant="secondary" 
+                                className="w-full text-xs mb-4" 
+                                onClick={handleResetSettings}
+                            >
+                                Reset to Auto-Detect (Replit/Proxy)
+                            </Button>
                             <p className="text-xs text-slate-500 mt-2">
                                 If running locally: <code>http://localhost:3000</code><br/>
-                                If on Replit/Cloud: Enter the webview URL.
+                                If on Replit/Cloud: Use Auto-Detect to let the proxy handle it.
                             </p>
                         </div>
                         <div className="flex gap-3">

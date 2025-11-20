@@ -4,8 +4,9 @@ const SESSION_KEY = 'beanbank_current_user_id';
 const URL_KEY = 'beanbank_api_url';
 const POLLING_INTERVAL_MS = 2000;
 
-// Default to localhost, but allow override
-let API_BASE_URL = localStorage.getItem(URL_KEY) || 'http://localhost:3000';
+// Default to empty string to leverage Vite Proxy (requests go to /api/...)
+// This works perfectly with the vite.config.ts proxy setup.
+let API_BASE_URL = localStorage.getItem(URL_KEY) || '';
 
 // --- CLIENT SIDE STATE CACHE ---
 let cache = {
@@ -58,7 +59,7 @@ export const StorageService = {
           }
           return false;
       } catch (e) {
-          console.warn(`BeanBank Server not reachable at ${API_BASE_URL}`);
+          console.warn(`BeanBank Server not reachable at ${API_BASE_URL || '/api'}`);
           return false;
       }
   },
